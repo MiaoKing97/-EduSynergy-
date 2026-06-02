@@ -199,7 +199,7 @@ const studentList = computed(() => {
 // 🌟 四档位色彩与标签分发逻辑
 const getScoreLabel = (score) => {
   if (score >= 90) return '优秀';
-  if (score >= 80) return '普通';
+  if (score >= 80) return '良好';
   if (score >= 60) return '及格';
   return '待优化';
 };
