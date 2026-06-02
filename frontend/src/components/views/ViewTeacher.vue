@@ -102,7 +102,7 @@ const isExtracting = ref(false);
 const isSaving = ref(false);
 const extractedRules = ref(null);
 
-const API_BASE_URL = 'http://localhost:8000/api/homework';
+const API_BASE_URL = '/api/homework';
 
 const totalScore = computed(() => {
   if (!extractedRules.value) return 0;

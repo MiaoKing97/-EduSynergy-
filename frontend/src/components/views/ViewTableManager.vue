@@ -21,41 +21,46 @@
     <div class="table-content">
       <table class="manager-table">
         <thead>
-          <tr>
-            <th width="5%"><input type="checkbox" @change="toggleAll" :checked="isAllSelected" /></th>
-            <th width="20%">作业/考试名称</th>
-            <th width="15%">所属科目 (创建人)</th>
-            <th width="20%">多维表格 Token</th>
-            <th width="15%">创建/入库时间</th>
-            <th width="12%">顶栏状态</th>
-            <th width="13%">快捷操作</th>
-          </tr>
+        <tr>
+          <th width="5%"><input type="checkbox" @change="toggleAll" :checked="isAllSelected"/></th>
+          <th width="20%">作业/考试名称</th>
+          <th width="15%">所属科目 (创建人)</th>
+          <th width="20%">多维表格 Token</th>
+          <th width="15%">创建/入库时间</th>
+          <th width="12%">顶栏状态</th>
+          <th width="13%">快捷操作</th>
+        </tr>
         </thead>
         <tbody>
-          <tr v-if="displayedTables.length === 0">
-            <td colspan="7" class="empty-text">📭 暂无您权限下的表格数据，请前往「运行仪表盘」或「模板设置」创建。</td>
-          </tr>
-          <tr v-for="(item, index) in displayedTables" :key="item.token" :class="{ 'is-selected': selectedTokens.includes(item.token) }">
-            <td><input type="checkbox" :value="item.token" v-model="selectedTokens" /></td>
-            <td class="font-bold">📊 {{ item.name }}</td>
-            <td>
-              <span class="subject-tag">{{ item.subject || '通用' }}</span>
-              <span class="owner-name">{{ item.ownerName || '未知' }}</span>
-            </td>
-            <td><span class="font-mono">{{ item.token }}</span></td>
-            <td class="date-text">{{ item.date || '系统初始记录' }}</td>
-            <td>
-              <span v-if="item.isPinned !== false" class="badge-pinned">📌 已固定</span>
-              <span v-else class="badge-unpinned">未固定</span>
-            </td>
-            <td class="action-cells">
-              <button class="btn-icon" @click="toggleSinglePin(item)" :title="item.isPinned !== false ? '从顶栏取消固定' : '固定到网页顶栏'">
-                {{ item.isPinned !== false ? '❌' : '📌' }}
-              </button>
-              <button class="btn-icon" @click="openLink(item)" title="在浏览器打开飞书原生文档">🌐</button>
-              <button class="btn-icon text-danger" @click="deleteSingle(item)" title="删除此条记录">🗑️</button>
-            </td>
-          </tr>
+        <tr v-if="displayedTables.length === 0">
+          <td colspan="7" class="empty-text">📭 暂无您权限下的表格数据，请前往「运行仪表盘」或「模板设置」创建。</td>
+        </tr>
+        <tr v-for="(item, index) in displayedTables" :key="item.token"
+            :class="{ 'is-selected': selectedTokens.includes(item.token) }">
+          <td><input type="checkbox" :value="item.token" v-model="selectedTokens"/></td>
+          <td class="font-bold">📊 {{ item.name }}</td>
+          <td>
+            <span class="subject-tag">{{ item.subject || '通用' }}</span>
+            <span class="owner-name">{{ item.ownerName || '未知' }}</span>
+          </td>
+          <td><span class="font-mono">{{ item.token }}</span></td>
+          <td class="date-text">{{ item.date || '系统初始记录' }}</td>
+          <td>
+            <span v-if="item.isPinned !== false" class="badge-pinned">📌 已固定</span>
+            <span v-else class="badge-unpinned">未固定</span>
+          </td>
+          <td class="action-cells">
+            <button class="btn-icon" @click="toggleSinglePin(item)"
+                    :title="item.isPinned !== false ? '从顶栏取消固定' : '固定到网页顶栏'">
+              {{ item.isPinned !== false ? '❌' : '📌' }}
+            </button>
+            <button class="btn-icon" @click="openLink(item)" title="在浏览器打开飞书原生文档">🌐</button>
+            <button class="btn-icon text-success" @click="openSubmitPage(item)"
+                    title="打开专属学生交卷页面，方便复制链接">📤
+            </button>
+            <button class="btn-icon text-danger" @click="deleteSingle(item)" title="删除此条记录">🗑️</button>
+          </td>
+        </tr>
         </tbody>
       </table>
     </div>
@@ -63,8 +68,8 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import { globalStore } from '../../store';
+import {ref, computed} from 'vue';
+import {globalStore} from '../../store';
 
 // 记录复选框选中的 token 数组
 const selectedTokens = ref([]);
@@ -110,7 +115,7 @@ const batchDelete = () => {
   if (!confirm(`⚠️ 确定要删除选中的 ${selectedTokens.value.length} 个表格记录吗？\n(注意：这仅会清除本系统的关联记录，不会删除飞书云端的真实文件)`)) return;
 
   globalStore.config.bitableList = globalStore.config.bitableList.filter(
-    item => !selectedTokens.value.includes(item.token)
+      item => !selectedTokens.value.includes(item.token)
   );
   selectedTokens.value = [];
 };
@@ -131,41 +136,232 @@ const deleteSingle = (item) => {
 const openLink = (item) => {
   window.open(`https://www.feishu.cn/base/${item.token}`, '_blank');
 };
+// 一键生成并打开该表格对应的学生专属交卷页面
+const openSubmitPage = (item) => {
+  const cfg = globalStore.config;
+
+  // 校验基础参数
+  if (!cfg.feishuAppId || !cfg.feishuAppSecret) {
+    alert("⚠️ 请先在右侧参数底盘配置您的飞书 App ID 和 App Secret！");
+    return;
+  }
+
+  // 组装加密载荷 (与新建表格时的逻辑保持绝对一致)
+  const invitePayload = {
+    feishuAppId: cfg.feishuAppId,
+    feishuAppSecret: cfg.feishuAppSecret,
+    appToken: item.token,
+    isWeb: item.subject === '网页设计' || globalStore.auth.role === 'web_teacher',
+    tableName: item.name
+  };
+
+  // Base64 编码以生成安全链接
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(invitePayload))));
+  const inviteLink = `${window.location.origin}/?invite=${encoded}`;
+
+  // 在新标签页打开专属链接
+  window.open(inviteLink, '_blank');
+};
 </script>
 
 <style scoped>
-.table-manager-container { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
-.action-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #ebeef5; margin-bottom: 20px; }
-.header-left h3 { margin: 0 0 8px 0; font-size: 18px; color: #303133; }
-.sub-title { margin: 0; font-size: 13px; color: #909399; }
-.header-right { display: flex; gap: 10px; }
+.text-success:hover {
+  color: #52c41a;
+  background: #f6ffed;
+  border-color: #b7eb8f;
+}
 
-.btn-batch { padding: 8px 16px; border: 1px solid #dcdfe6; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; transition: 0.2s; color: #606266;}
-.btn-batch:hover:not(:disabled) { border-color: #1890ff; color: #1890ff; background: #e6f7ff; }
-.btn-batch:disabled { opacity: 0.5; cursor: not-allowed; background: #f5f7fa; }
-.btn-danger:hover:not(:disabled) { border-color: #ff4d4f; color: #ff4d4f; background: #fff1f0; }
+.table-manager-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+}
 
-.table-content { background: #fff; border: 1px solid #ebeef5; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.02);}
-.manager-table { width: 100%; border-collapse: collapse; text-align: left; }
-.manager-table th { background: #f9fafc; padding: 14px 16px; font-size: 13px; color: #606266; font-weight: 600; border-bottom: 1px solid #ebeef5; }
-.manager-table td { padding: 14px 16px; font-size: 13px; border-bottom: 1px solid #ebeef5; color: #333; transition: background-color 0.2s; }
-.manager-table tbody tr:hover td { background-color: #f5f7fa; }
-.manager-table tbody tr.is-selected td { background-color: #e6f7ff; }
+.action-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 20px;
+}
 
-.empty-text { text-align: center; color: #909399; padding: 60px !important; font-size: 14px; }
-.font-bold { font-weight: 600; color: #1f1f1f; }
-.font-mono { font-family: monospace; color: #666; background: #f4f4f5; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
-.date-text { color: #8c8c8c; font-size: 12px; }
+.header-left h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  color: #303133;
+}
+
+.sub-title {
+  margin: 0;
+  font-size: 13px;
+  color: #909399;
+}
+
+.header-right {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-batch {
+  padding: 8px 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: 0.2s;
+  color: #606266;
+}
+
+.btn-batch:hover:not(:disabled) {
+  border-color: #1890ff;
+  color: #1890ff;
+  background: #e6f7ff;
+}
+
+.btn-batch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f5f7fa;
+}
+
+.btn-danger:hover:not(:disabled) {
+  border-color: #ff4d4f;
+  color: #ff4d4f;
+  background: #fff1f0;
+}
+
+.table-content {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.02);
+}
+
+.manager-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.manager-table th {
+  background: #f9fafc;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: #606266;
+  font-weight: 600;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.manager-table td {
+  padding: 14px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid #ebeef5;
+  color: #333;
+  transition: background-color 0.2s;
+}
+
+.manager-table tbody tr:hover td {
+  background-color: #f5f7fa;
+}
+
+.manager-table tbody tr.is-selected td {
+  background-color: #e6f7ff;
+}
+
+.empty-text {
+  text-align: center;
+  color: #909399;
+  padding: 60px !important;
+  font-size: 14px;
+}
+
+.font-bold {
+  font-weight: 600;
+  color: #1f1f1f;
+}
+
+.font-mono {
+  font-family: monospace;
+  color: #666;
+  background: #f4f4f5;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.date-text {
+  color: #8c8c8c;
+  font-size: 12px;
+}
 
 /* 🌟 新增科目与物主样式 */
-.subject-tag { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-right: 6px; }
-.owner-name { font-size: 12px; color: #888; }
+.subject-tag {
+  background: #f6ffed;
+  color: #52c41a;
+  border: 1px solid #b7eb8f;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-right: 6px;
+}
 
-.badge-pinned { background: #e6f7ff; color: #1890ff; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; border: 1px solid #91d5ff;}
-.badge-unpinned { background: #f4f4f5; color: #909399; padding: 4px 8px; border-radius: 4px; font-size: 12px; border: 1px solid #dcdfe6;}
+.owner-name {
+  font-size: 12px;
+  color: #888;
+}
 
-.action-cells { display: flex; gap: 8px; }
-.btn-icon { background: #fff; border: 1px solid #dcdfe6; cursor: pointer; font-size: 13px; padding: 6px; border-radius: 4px; transition: 0.2s; display: flex; align-items: center; justify-content: center;}
-.btn-icon:hover { background: #e6f7ff; border-color: #1890ff; transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
-.text-danger:hover { color: #f5222d; background: #fff1f0; border-color: #ffa39e; }
+.badge-pinned {
+  background: #e6f7ff;
+  color: #1890ff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  border: 1px solid #91d5ff;
+}
+
+.badge-unpinned {
+  background: #f4f4f5;
+  color: #909399;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  border: 1px solid #dcdfe6;
+}
+
+.action-cells {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-icon {
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px;
+  border-radius: 4px;
+  transition: 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon:hover {
+  background: #e6f7ff;
+  border-color: #1890ff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.text-danger:hover {
+  color: #f5222d;
+  background: #fff1f0;
+  border-color: #ffa39e;
+}
 </style>

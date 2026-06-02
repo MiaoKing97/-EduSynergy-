@@ -107,7 +107,7 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { globalStore } from '../../store';
 
-const API_BASE_URL = 'http://localhost:8000/api/homework';
+const API_BASE_URL = '/api/homework';
 
 const urlParams = new URLSearchParams(window.location.search);
 const inviteParam = urlParams.get('invite');

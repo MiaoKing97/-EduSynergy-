@@ -49,7 +49,7 @@ def _capture_sync(url: str = None, html_content: str = None):
             _trigger_lazy_load(page_pc)
             pc_bytes = page_pc.screenshot(full_page=True)
 
-            # 如果是在线抓取模式，现场洗出一份提纯源码；如果是文件上传模式，直接使用原码
+            # ...... (在 _capture_sync 函数内部的 DOM 脱水提纯逻辑) ......
             if not html_content:
                 logger.info("📄 [Browser] 正在提取并清洗在线网页 DOM 结构源码...")
                 raw_html = page_pc.evaluate('''() => {
@@ -62,7 +62,7 @@ def _capture_sync(url: str = None, html_content: str = None):
                     });
                     return clone.innerHTML;
                 }''')
-                # 修复潜在的空正则替换警告，改为简单的清除空白或者保留原有逻辑
+                # 在 Python 端安全地剔除 HTML 注释，防止跨语言传递时破坏 JS 语法
                 clean_html = re.sub(r'', '', raw_html, flags=re.DOTALL).strip()
             else:
                 clean_html = html_content

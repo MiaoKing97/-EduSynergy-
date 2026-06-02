@@ -142,7 +142,7 @@ const fetchWorkspace = async (isAutoSync = false) => {
       feishu_app_secret: globalStore.config.feishuAppSecret,
       app_token: globalStore.config.feishuToken
     };
-    const res = await axios.post('http://localhost:8000/api/homework/get_workspace_data', payload);
+    const res = await axios.post('/api/homework/get_workspace_data', payload);
     if (res.data.status === 'success') {
       pendingList.value = res.data.pending_list || [];
       gradedList.value = res.data.graded_list || [];
@@ -169,7 +169,7 @@ const executeGrade = async (item) => {
     finalPrompt += `\n\n【附加特殊批改要求】：${globalStore.config.customPrompt}`;
   }
   try {
-    await axios.post('http://localhost:8000/api/homework/grade_homework', {
+    await axios.post('/api/homework/grade_homework', {
       record_id: item.record_id,
       ai_model: globalStore.config.model,
       api_key: globalStore.config.apiKey,

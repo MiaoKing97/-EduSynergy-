@@ -179,7 +179,7 @@ import axios from 'axios';
 import * as echarts from 'echarts';
 import { globalStore } from '../../store';
 
-const API_BASE_URL = 'http://localhost:8000/api/homework';
+const API_BASE_URL = '/api/homework';
 const loading = ref(false);
 
 const rawRecords = ref([]);

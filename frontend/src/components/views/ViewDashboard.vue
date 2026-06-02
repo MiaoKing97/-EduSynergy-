@@ -117,7 +117,7 @@ import axios from 'axios';
 import MarkdownIt from 'markdown-it';
 import { globalStore } from '../../store';
 
-const API_HOMEWORK_URL = 'http://localhost:8000/api/homework';
+const API_HOMEWORK_URL = '/api/homework';
 
 const chatMainRef = ref(null);
 const userInput = ref('');

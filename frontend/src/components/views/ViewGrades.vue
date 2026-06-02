@@ -228,8 +228,8 @@ const fetchGradesData = async (forceSync = false, isAutoSync = false) => {
 
     const payload = { feishu_app_id: globalStore.config.feishuAppId, feishu_app_secret: globalStore.config.feishuAppSecret, app_token: token };
     const [dashRes, workRes] = await Promise.all([
-      axios.post('http://localhost:8000/api/homework/get_dashboard_stats', payload),
-      axios.post('http://localhost:8000/api/homework/get_workspace_data', payload)
+      axios.post('/api/homework/get_dashboard_stats', payload),
+      axios.post('/api/homework/get_workspace_data', payload)
     ]);
     if (dashRes.data.status === 'success') rawRecords.value = dashRes.data.stats.raw_records || [];
     if (workRes.data.status === 'success') workspaceGradedList.value = workRes.data.graded_list || [];
