@@ -60,7 +60,7 @@ class LLMService:
     # 🌟 【新增功能】支持同时传入多张图片进行跨端视觉 Visual Diff 分析
     def call_doubao_vision_multi(self, api_key: str, prompt: str, images_base64: list,
                                  model_name: str = "doubao-seed-2-0-pro-260215"):
-        logger.info(f"\n========================================")
+        logger.info(f"========================================\n")
         logger.info(f"🚀 正在呼叫大模型 (多图跨端对比模式): {model_name}")
         logger.info(f"========================================\n")
 
