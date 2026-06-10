@@ -10,7 +10,7 @@ cd backend
 call pip install -r requirements.txt
 call playwright install chromium
 
-start "AI Backend (FastAPI)" cmd /k "uvicorn main:app --host 0.0.0.0 --port 8000"
+start "AI Backend (FastAPI)" cmd /k "uvicorn main:app --reload --host 0.0.0.0 --port 8000"
 cd ..
 
 echo.
@@ -30,6 +30,6 @@ timeout /t 4 /nobreak >nul
 start http://localhost:5173
 
 echo.
-echo [SUCCESS] All services are running! 
+echo [SUCCESS] All services are running!
 echo To stop the servers, just close the two new CMD windows.
 pause

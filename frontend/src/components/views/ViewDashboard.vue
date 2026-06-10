@@ -1,5 +1,103 @@
 <template>
   <div class="ai-workspace-container">
+    <section class="portal-hero">
+      <div class="hero-main">
+        <div class="brand-row">
+          <div class="brand-logo-wrap">
+            <span class="brand-logo-ring"></span>
+            <span class="brand-logo-mark">杏</span>
+          </div>
+          <div class="brand-text">
+            <h1 class="brand-name">
+              <span class="brand-name-text">杏坛智析</span>
+            </h1>
+            <span class="brand-tag">EduSynergy · 智能教育协同中台</span>
+          </div>
+        </div>
+        <span class="hero-kicker">Teaching Operations Portal</span>
+        <h2>{{ greetingText }}，{{ globalStore.auth.username || '老师' }}</h2>
+        <p>{{ teacherSubject }} · {{ roleLabel }} · 让飞书数据、AI 批改与学情洞察在这里汇聚成一张可执行的教学地图。</p>
+        <div class="hero-actions">
+          <button class="hero-btn primary" @click="showTableModal = true">📑 新建多维表格</button>
+          <button class="hero-btn" @click="goTo('/grading')">✅ 开始智能批改</button>
+          <button class="hero-btn" @click="goTo('/analytics')">📈 查看学情大屏</button>
+        </div>
+      </div>
+      <div class="hero-orbit">
+        <div class="orbit-card main">
+          <span>当前工作表</span>
+          <strong>{{ activeBitable?.name || (globalStore.config.feishuToken ? '外部飞书表格' : '尚未绑定') }}</strong>
+          <small>{{ globalStore.config.feishuToken ? 'Token 已就绪' : '请在顶部标签或右侧面板选择' }}</small>
+          <small v-if="lastSyncLabel" class="last-sync">📡 最后同步：{{ lastSyncLabel }}</small>
+        </div>
+        <div class="orbit-card mini top">{{ cachedRecordCount }} 条学情记录</div>
+        <div class="orbit-card mini bottom">并发 {{ globalStore.config.concurrency || 1 }} 车道</div>
+      </div>
+    </section>
+
+    <section class="portal-grid">
+      <div class="portal-card active-table-card">
+        <div class="card-title-row">
+          <span class="card-icon">🗂️</span>
+          <div>
+            <h3>当前班级工作表</h3>
+            <p>决定批改、分析和成绩档案读取的数据源</p>
+          </div>
+        </div>
+        <div class="table-status">
+          <strong>{{ activeBitable?.name || '未选择常用表格' }}</strong>
+          <span>{{ globalStore.config.feishuToken || '暂无 Token' }}</span>
+        </div>
+        <div class="card-actions">
+          <button @click="goTo('/table-manager')">管理表格</button>
+          <button v-if="globalStore.config.feishuToken" @click="openActiveBitable">打开飞书</button>
+        </div>
+      </div>
+
+      <div class="portal-card health-card">
+        <div class="card-title-row">
+          <span class="card-icon">🧭</span>
+          <div>
+            <h3>配置健康度</h3>
+            <p>批改和分析前的关键能力检查</p>
+          </div>
+        </div>
+        <div class="health-list">
+          <div v-for="item in configHealthItems" :key="item.label" class="health-item" :class="item.ok ? 'ok' : 'warn'">
+            <span>{{ item.icon }}</span>
+            <div>
+              <strong>{{ item.label }}</strong>
+              <small>{{ item.text }}</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="portal-card quick-entry-card">
+        <div class="card-title-row">
+          <span class="card-icon">⚡</span>
+          <div>
+            <h3>快捷工作流</h3>
+            <p>一键进入最常用的教务任务</p>
+          </div>
+        </div>
+        <div class="quick-entry-grid">
+          <button v-for="entry in quickEntries" :key="entry.path" @click="goTo(entry.path)">
+            <span>{{ entry.icon }}</span>
+            <strong>{{ entry.label }}</strong>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-heading">
+      <div>
+        <span>AI Copilot</span>
+        <h3>教务数据助手</h3>
+      </div>
+      <p>可直接询问作业进度、薄弱知识点、学生名单与教学建议。</p>
+    </div>
+
     <div class="chat-layout">
 
       <!-- 🌟 左侧：千人千面的极客指令舱 -->
@@ -113,11 +211,19 @@
 
 <script setup>
 import { ref, watch, nextTick, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import axios from 'axios';
 import MarkdownIt from 'markdown-it';
 import { globalStore } from '../../store';
 
+// Attach login/logout to globalStore for compatibility
+import { login, logout, saveConfig as saveConfigAction } from '../../store';
+globalStore.login = login;
+globalStore.logout = logout;
+globalStore.saveConfig = saveConfigAction;
+
 const API_HOMEWORK_URL = '/api/homework';
+const router = useRouter();
 
 const chatMainRef = ref(null);
 const userInput = ref('');
@@ -128,6 +234,46 @@ const newTableName = ref('');
 // 🌟 学科身份感知
 const isWebTeacher = computed(() => globalStore.auth.role === 'web_teacher');
 const teacherSubject = computed(() => globalStore.auth.subject || '通用学科');
+const roleLabel = computed(() => globalStore.auth.role === 'web_teacher' ? '网页设计教师' : '学科教师');
+const greetingText = computed(() => {
+  const hour = new Date().getHours();
+  if (hour < 6) return '夜深了';
+  if (hour < 12) return '上午好';
+  if (hour < 18) return '下午好';
+  return '晚上好';
+});
+const activeBitable = computed(() => {
+  const list = globalStore.config.bitableList || [];
+  return list.find(item => item.token === globalStore.config.feishuToken) || null;
+});
+const cachedRecordCount = computed(() => {
+  const token = globalStore.config.feishuToken;
+  return token ? (globalStore.tableDataCache[token]?.rawRecords || []).length : 0;
+});
+const lastSyncLabel = computed(() => {
+  const token = globalStore.config.feishuToken;
+  const stamp = token ? globalStore.tableDataCache[token]?.lastSyncAt : '';
+  if (!stamp) return '';
+  return new Date(stamp).toLocaleString();
+});
+const configHealthItems = computed(() => [
+  { icon: '📑', label: '飞书连接', text: globalStore.config.feishuAppId && globalStore.config.feishuAppSecret ? '凭证已配置' : '待填写 App ID / Secret', ok: Boolean(globalStore.config.feishuAppId && globalStore.config.feishuAppSecret) },
+  { icon: '🗂️', label: '工作表', text: globalStore.config.feishuToken ? '已绑定数据源' : '未选择表格 Token', ok: Boolean(globalStore.config.feishuToken) },
+  { icon: '🧠', label: 'AI 服务', text: globalStore.config.apiKey ? '模型密钥已配置' : '待填写 API Key', ok: Boolean(globalStore.config.apiKey) },
+  { icon: '⚡', label: '批改策略', text: `${globalStore.config.concurrency || 1} 份/批次`, ok: true },
+]);
+const quickEntries = computed(() => [
+  { icon: '🗂️', label: '表格管理', path: '/table-manager' },
+  { icon: '📤', label: '作业代交', path: '/student' },
+  { icon: '✅', label: '智能批改', path: '/grading' },
+  { icon: '📈', label: '学情大屏', path: '/analytics' },
+  { icon: '🧑‍🎓', label: '成绩档案', path: '/grades' },
+]);
+
+const goTo = (path) => router.push(path);
+const openActiveBitable = () => {
+  if (globalStore.config.feishuToken) window.open(`https://www.feishu.cn/base/${globalStore.config.feishuToken}`, '_blank');
+};
 
 // 🌟 动态生成千人千面快捷指令
 const dynamicQuickActions = computed(() => {
@@ -292,6 +438,8 @@ const sendMessage = async () => {
       data_context: dataContext,
       ai_model: globalStore.config.model || 'ep-20240523091929-28c94',
       api_key: globalStore.config.apiKey
+    }, {
+      headers: { 'Authorization': `Bearer ${globalStore.auth.token}` }
     });
 
     if (response.data.status === 'success') {
@@ -299,7 +447,7 @@ const sendMessage = async () => {
     }
   } catch (error) {
     console.error("AI 接口调用失败:", error);
-    messages.value[messages.value.length - 1].content = `❌ **数据引擎调用失败**\n原因: ${error.response?.data?.detail || error.message}\n请检查您的 API KEY 和网络，或者确认后端 /chat_with_data 接口已正确部署。`;
+    messages.value[messages.value.length - 1].content = `❌ **数据引擎调用失败**\n原因: ${error.response?.data?.detail || error.message}\n请检查您的 API KEY 和网络。`;
   } finally {
     isGenerating.value = false;
     await scrollToBottom();
@@ -327,6 +475,8 @@ const submitCreateTable = async () => {
       table_name: tableName,
       feishu_app_id: cfg.feishuAppId,
       feishu_app_secret: cfg.feishuAppSecret
+    }, {
+      headers: { 'Authorization': `Bearer ${globalStore.auth.token}` }
     });
 
     if (response.data.status === 'success') {
@@ -370,8 +520,63 @@ const submitCreateTable = async () => {
 </script>
 
 <style scoped>
-.ai-workspace-container { width: 100%; height: 100%; background: #fff; border-radius: 12px; border: 1px solid #edf2f7; box-shadow: 0 4px 20px rgba(0,0,0,0.03); overflow: hidden; }
-.chat-layout { display: flex; height: 100%; }
+.ai-workspace-container { width: 100%; min-height: 100%; display: flex; flex-direction: column; gap: 20px; }
+.portal-hero { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; padding: 30px; border-radius: 24px; background: linear-gradient(135deg, #1d4ed8 0%, #4f46e5 56%, #7c3aed 100%); color: #fff; box-shadow: 0 22px 48px rgba(79, 70, 229, 0.25); }
+.portal-hero::after { content: ''; position: absolute; width: 420px; height: 420px; right: -190px; top: -210px; border-radius: 50%; background: rgba(255,255,255,0.12); }
+.hero-main { position: relative; z-index: 1; }
+.brand-row { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.brand-logo-wrap { position: relative; width: 56px; height: 56px; display: grid; place-items: center; flex-shrink: 0; }
+.brand-logo-ring { position: absolute; inset: -6px; border-radius: 20px; background: conic-gradient(from 90deg, rgba(253, 224, 71, 0.85), rgba(255, 255, 255, 0.35), rgba(125, 211, 252, 0.85), rgba(253, 224, 71, 0.85)); filter: blur(8px); opacity: 0.55; animation: dashRingSpin 8s linear infinite; }
+@keyframes dashRingSpin { to { transform: rotate(360deg); } }
+.brand-logo-mark { position: relative; width: 56px; height: 56px; border-radius: 18px; background: linear-gradient(140deg, #ffffff 0%, #fef3c7 60%, #fde68a 100%); color: #3730a3; font-size: 28px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 14px 30px rgba(15, 23, 42, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.9); font-family: "STKaiti", "KaiTi", "楷体", serif; }
+.brand-text { display: flex; flex-direction: column; gap: 4px; }
+.brand-name { margin: 0; font-size: 28px; letter-spacing: 6px; line-height: 1; font-family: "STKaiti", "KaiTi", "楷体", "Microsoft YaHei", serif; }
+.brand-name-text { background: linear-gradient(120deg, #ffffff 0%, #fef9c3 45%, #fde68a 65%, #ffffff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.4); text-shadow: 0 2px 14px rgba(15, 23, 42, 0.3); }
+.brand-tag { color: rgba(255, 255, 255, 0.75); font-size: 11px; font-weight: 700; letter-spacing: 2.2px; }
+.hero-kicker { display: inline-flex; padding: 7px 12px; border-radius: 999px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.2); font-size: 12px; font-weight: 900; letter-spacing: 1.4px; text-transform: uppercase; }
+.hero-main h2 { margin: 18px 0 10px; font-size: 34px; letter-spacing: -0.8px; }
+.hero-main p { max-width: 650px; margin: 0; color: rgba(255,255,255,0.78); line-height: 1.8; font-size: 15px; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.hero-btn { border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.12); color: #fff; border-radius: 999px; padding: 11px 16px; font-weight: 900; cursor: pointer; transition: 0.2s; }
+.hero-btn.primary { background: #fff; color: #1d4ed8; border-color: #fff; }
+.hero-btn:hover { transform: translateY(-2px); background: rgba(255,255,255,0.22); }
+.hero-btn.primary:hover { background: #eff6ff; }
+.hero-orbit { position: relative; min-height: 210px; z-index: 1; }
+.orbit-card { position: absolute; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.14); backdrop-filter: blur(14px); border-radius: 20px; box-shadow: 0 14px 28px rgba(15, 23, 42, 0.15); }
+.orbit-card.main { right: 12px; top: 30px; width: 245px; padding: 20px; }
+.orbit-card.main span { display: block; color: rgba(255,255,255,0.68); font-size: 12px; font-weight: 800; }
+.orbit-card.main strong { display: block; margin-top: 8px; font-size: 20px; line-height: 1.35; }
+.orbit-card.main small { display: block; margin-top: 10px; color: rgba(255,255,255,0.72); }
+.orbit-card.main small.last-sync { margin-top: 6px; color: rgba(255,255,255,0.82); font-weight: 700; }
+.orbit-card.mini { padding: 10px 14px; font-size: 13px; font-weight: 900; }
+.orbit-card.top { left: 0; top: 8px; }
+.orbit-card.bottom { right: 0; bottom: 6px; }
+.portal-grid { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 18px; }
+.portal-card { background: rgba(255,255,255,0.88); border: 1px solid rgba(226,232,240,0.9); border-radius: 20px; padding: 20px; box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06); }
+.card-title-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+.card-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px; background: #eff6ff; font-size: 20px; }
+.card-title-row h3 { margin: 0; color: #0f172a; font-size: 16px; font-weight: 900; }
+.card-title-row p { margin: 4px 0 0; color: #94a3b8; font-size: 12px; line-height: 1.5; }
+.table-status { padding: 14px; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 6px; }
+.table-status strong { color: #1e293b; }
+.table-status span { color: #64748b; font-size: 12px; word-break: break-all; }
+.card-actions { display: flex; gap: 10px; margin-top: 14px; }
+.card-actions button, .quick-entry-grid button { border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; border-radius: 12px; padding: 9px 12px; font-size: 12px; font-weight: 900; cursor: pointer; transition: 0.2s; }
+.card-actions button:hover, .quick-entry-grid button:hover { transform: translateY(-1px); background: #dbeafe; }
+.health-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.health-item { display: flex; gap: 9px; align-items: center; padding: 11px; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0; }
+.health-item.ok { border-color: #bbf7d0; background: #f0fdf4; }
+.health-item.warn { border-color: #fde68a; background: #fffbeb; }
+.health-item strong { display: block; font-size: 12px; color: #0f172a; }
+.health-item small { display: block; margin-top: 2px; color: #64748b; font-size: 11px; }
+.quick-entry-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.quick-entry-grid button { display: flex; align-items: center; gap: 8px; justify-content: flex-start; background: #fff; border-color: #e2e8f0; color: #334155; }
+.quick-entry-grid button span { font-size: 16px; }
+.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; padding: 0 4px; }
+.section-heading span { color: #2563eb; font-size: 12px; font-weight: 900; letter-spacing: 1.6px; text-transform: uppercase; }
+.section-heading h3 { margin: 4px 0 0; font-size: 22px; color: #0f172a; }
+.section-heading p { margin: 0; color: #64748b; font-size: 13px; }
+.chat-layout { display: flex; min-height: 680px; background: #fff; border-radius: 20px; border: 1px solid #edf2f7; box-shadow: 0 10px 26px rgba(15,23,42,0.06); overflow: hidden; }
 
 /* 左侧预设指令舱 */
 .prompt-sidebar { width: 300px; background: #f8fafc; border-right: 1px solid #edf2f7; display: flex; flex-direction: column; }
@@ -467,4 +672,10 @@ const submitCreateTable = async () => {
 .btn-confirm { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; cursor: pointer; transition: 0.2s;}
 .btn-confirm:hover:not(:disabled) { background: #1d4ed8; box-shadow: 0 4px 12px rgba(29, 78, 216, 0.3); }
 .btn-confirm:disabled { background: #94a3b8; cursor: not-allowed; }
+
+@media (max-width: 1180px) {
+  .portal-hero { grid-template-columns: 1fr; }
+  .hero-orbit { display: none; }
+  .portal-grid { grid-template-columns: 1fr; }
+}
 </style>

@@ -1,11 +1,14 @@
 <template>
   <div class="grades-manager">
-    <div class="dashboard-header">
+    <div class="dashboard-header no-print">
       <div class="title-area">
         <h3>🧑‍🎓 学生成绩档案中心</h3>
         <p>动态调取全班学生历史成绩大盘，生成个性化多维诊断报告</p>
       </div>
       <div class="header-controls">
+        <button class="btn-fetch" @click="exportClassExcel" :disabled="studentList.length === 0" title="导出班级 CSV（可用 Excel 打开）">
+          📊 导出班级 CSV
+        </button>
         <button class="btn-fetch" @click="fetchGradesData(true)" :disabled="loading || !globalStore.config.feishuToken">
           <span class="sync-icon" :class="{ 'is-spinning': loading }">🔄</span>
           {{ loading ? '云端同步中...' : '强制同步最新档案' }}
@@ -26,7 +29,7 @@
 
     <template v-else>
       <div class="grades-content-layout">
-        <div class="panel-left">
+        <div class="panel-left no-print">
           <div class="panel-title">
             <span>📊 班级成绩大盘总览</span>
             <span class="student-count">共 <strong>{{ studentList.length }}</strong> 名档案</span>
@@ -65,50 +68,66 @@
           </div>
         </div>
 
-        <div class="panel-right">
+        <div class="panel-right" id="printable-report">
           <div v-if="!selectedStudent" class="sub-empty-state">
             <div class="sub-empty-icon">👈</div>
             <p>请在左侧点击任意一位学生的行记录，调阅其独家学情诊断报告。</p>
           </div>
 
           <div v-else class="student-report-card">
-
-            <div class="report-header">
-              <div class="report-user-info">
-                <h4>{{ selectedStudent.name.replace('-UI评测','') }} 的个性化学情报告</h4>
-                <span class="report-time">档案状态：飞书数据流云端实时对齐中</span>
-              </div>
-
-              <div v-if="isWebTeacher" class="web-score-badge">
-                <span class="badge-icon">✨</span>
-                <span class="badge-text">UI/UX 画像就绪</span>
-              </div>
-              <div v-else class="report-score-box" :style="{ borderColor: getScoreColor(selectedStudent.score) }">
-                <div class="report-score-val" :style="{ color: getScoreColor(selectedStudent.score) }">{{ selectedStudent.score }}</div>
-                <div class="report-score-label">综合得分</div>
-              </div>
+            <!-- 🌟 导出工具条 -->
+            <div class="export-toolbar no-print">
+              <button class="export-btn" @click="exportPdf" title="弹出浏览器打印窗口，选择'另存为 PDF'">
+                📄 导出学生 PDF
+              </button>
+              <button class="export-btn" @click="copyParentFeedback" title="复制家长反馈文案到剪贴板">
+                💬 复制家长反馈
+              </button>
+              <span v-if="copyTip" class="copy-tip">{{ copyTip }}</span>
             </div>
 
-            <div class="report-stats-grid">
-              <div class="stat-card">
-                <div class="stat-label">{{ isWebTeacher ? '全卷项目' : '全卷作答' }}</div>
-                <div class="stat-num text-black">{{ selectedStudent.total }} {{ isWebTeacher ? '项' : '题' }}</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">{{ isWebTeacher ? '规范合格' : '稳妥做对' }}</div>
-                <div class="stat-num text-green">{{ selectedStudent.correct }} {{ isWebTeacher ? '项' : '题' }}</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">{{ isWebTeacher ? '待优化区' : '薄弱做错' }}</div>
-                <div class="stat-num" :class="isWebTeacher ? 'text-orange' : 'text-red'">
-                  {{ selectedStudent.wrong }} {{ isWebTeacher ? '项' : '题' }}
+            <!-- 🌟 普通学科：画像卡（替代旧的简略头部） -->
+            <template v-if="!isWebTeacher">
+              <StudentProfileCard
+                ref="profileRef"
+                :student="selectedStudent"
+                :subject="globalStore.auth.subject || '通用学科'"
+                :rank="getStudentRank(selectedStudent)"
+                :total-students="studentList.length"
+              />
+              <GradesReportNormal :student="selectedStudent" />
+            </template>
+
+            <!-- 网页设计：保留原有视觉报告 -->
+            <template v-else>
+              <div class="report-header">
+                <div class="report-user-info">
+                  <h4>{{ selectedStudent.name.replace('-UI评测','') }} 的个性化学情报告</h4>
+                  <span class="report-time">档案状态：飞书数据流云端实时对齐中</span>
+                </div>
+                <div class="web-score-badge">
+                  <span class="badge-icon">✨</span>
+                  <span class="badge-text">UI/UX 画像就绪</span>
                 </div>
               </div>
-            </div>
 
-            <GradesReportWeb v-if="isWebTeacher" :student="selectedStudent" />
-            <GradesReportNormal v-else :student="selectedStudent" />
+              <div class="report-stats-grid">
+                <div class="stat-card">
+                  <div class="stat-label">全卷项目</div>
+                  <div class="stat-num text-black">{{ selectedStudent.total }} 项</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">规范合格</div>
+                  <div class="stat-num text-green">{{ selectedStudent.correct }} 项</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">待优化区</div>
+                  <div class="stat-num text-orange">{{ selectedStudent.wrong }} 项</div>
+                </div>
+              </div>
 
+              <GradesReportWeb :student="selectedStudent" />
+            </template>
           </div>
         </div>
       </div>
@@ -120,13 +139,17 @@
 import { ref, computed, onMounted, onActivated } from 'vue';
 import axios from 'axios';
 import { globalStore } from '../../store';
+import syncCenter from '../../services/syncCenter';
 import GradesReportNormal from '../GradesReportNormal.vue';
 import GradesReportWeb from '../GradesReportWeb.vue';
+import StudentProfileCard from '../StudentProfileCard.vue';
 
 const loading = ref(false);
 const rawRecords = ref([]);
 const workspaceGradedList = ref([]);
 const selectedStudent = ref(null);
+const profileRef = ref(null);
+const copyTip = ref('');
 
 const isWebTeacher = computed(() => globalStore.auth.role === 'web_teacher');
 
@@ -135,9 +158,8 @@ const checkPass = (status) => {
   return s === '正确' || s.includes('部分正确') || s.includes('基本正确') || s.includes('合格') || s === 'true';
 };
 
-const sanitizeName = (name) => name ? String(name).normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, '').trim() : '未知学生';
+const sanitizeName = (name) => name ? String(name).normalize('NFC').replace(/[​-‍﻿]/g, '').replace(/\s+/g, '').trim() : '未知学生';
 
-// 🌟 辅助提取器：专门提取单次网页作业的雷达图平均分
 const getWebScore = (errorCause) => {
   if (!errorCause) return 0;
   try {
@@ -159,7 +181,6 @@ const getWebScore = (errorCause) => {
   return 0;
 };
 
-// 🌟 数据核心重构：精确计算网页平均分
 const studentList = computed(() => {
   if (rawRecords.value.length === 0) return [];
   const map = {};
@@ -186,17 +207,19 @@ const studentList = computed(() => {
   return Object.values(map).map(stu => {
     let dynamicScore = 0;
     if (isWebTeacher.value) {
-      // 网页老师：雷达图综合得分平均值
       dynamicScore = stu.webCount > 0 ? Math.round(stu.sumWebScore / stu.webCount) : 0;
     } else {
-      // 普通老师：基于正确题数的卷面分
       dynamicScore = stu.total > 0 ? Math.round((stu.correct / stu.total) * 100) : 0;
     }
     return { ...stu, score: dynamicScore };
   }).sort((a, b) => b.score - a.score);
 });
 
-// 🌟 四档位色彩与标签分发逻辑
+const getStudentRank = (student) => {
+  const idx = studentList.value.findIndex(s => s.name === student.name);
+  return idx >= 0 ? idx + 1 : 0;
+};
+
 const getScoreLabel = (score) => {
   if (score >= 90) return '优秀';
   if (score >= 80) return '良好';
@@ -205,10 +228,10 @@ const getScoreLabel = (score) => {
 };
 
 const getScoreColor = (score) => {
-  if (score >= 90) return '#10b981'; // 绿
-  if (score >= 80) return '#3b82f6'; // 蓝
-  if (score >= 60) return '#f59e0b'; // 橙
-  return '#ef4444'; // 红
+  if (score >= 90) return '#10b981';
+  if (score >= 80) return '#3b82f6';
+  if (score >= 60) return '#f59e0b';
+  return '#ef4444';
 };
 
 const selectStudent = (student) => { selectedStudent.value = student; };
@@ -217,26 +240,97 @@ const fetchGradesData = async (forceSync = false, isAutoSync = false) => {
   const token = globalStore.config.feishuToken;
   if (!token || loading.value) return;
 
-  if (globalStore.tableDataCache[token + '_grades'] && !forceSync) {
-    rawRecords.value = globalStore.tableDataCache[token + '_grades'].rawRecords;
-    workspaceGradedList.value = globalStore.tableDataCache[token + '_grades'].workspace;
-  }
-
   loading.value = true;
   try {
     if (isAutoSync) await new Promise(resolve => setTimeout(resolve, 800));
-
-    const payload = { feishu_app_id: globalStore.config.feishuAppId, feishu_app_secret: globalStore.config.feishuAppSecret, app_token: token };
-    const [dashRes, workRes] = await Promise.all([
-      axios.post('/api/homework/get_dashboard_stats', payload),
-      axios.post('/api/homework/get_workspace_data', payload)
-    ]);
-    if (dashRes.data.status === 'success') rawRecords.value = dashRes.data.stats.raw_records || [];
-    if (workRes.data.status === 'success') workspaceGradedList.value = workRes.data.graded_list || [];
-    globalStore.tableDataCache[token + '_grades'] = { rawRecords: rawRecords.value, workspace: workspaceGradedList.value };
-
+    const data = await syncCenter.loadGradesData(token, forceSync);
+    if (data) {
+      rawRecords.value = data.rawRecords || [];
+      workspaceGradedList.value = data.workspace || [];
+    }
     if (studentList.value.length > 0 && !selectedStudent.value) selectedStudent.value = studentList.value[0];
-  } catch (e) { console.error(e); } finally { loading.value = false; }
+  } catch (e) {
+    if (e.response && e.response.data && e.response.data.detail) {
+      console.error("加载成绩数据失败:", e.response.data.detail);
+      alert("❌ 加载数据失败: " + e.response.data.detail);
+    } else {
+      console.error("加载成绩数据失败:", e);
+    }
+  } finally { loading.value = false; }
+};
+
+// 🌟 导出：PDF 走浏览器打印对话框（@media print 已注入打印样式）
+const exportPdf = () => {
+  if (!selectedStudent.value) return;
+  document.title = `${selectedStudent.value.name.replace('-UI评测','')}_学情报告_${new Date().toISOString().slice(0,10)}`;
+  setTimeout(() => { window.print(); }, 100);
+};
+
+// 🌟 导出：班级 CSV
+const exportClassExcel = () => {
+  if (studentList.value.length === 0) return;
+  const headers = ['排名', '姓名', '总题数', '答对', '答错', '正确率%', '综合得分', '等级'];
+  const rows = studentList.value.map((s, i) => [
+    i + 1,
+    s.name.replace('-UI评测', ''),
+    s.total,
+    s.correct,
+    s.wrong,
+    s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0,
+    s.score,
+    getScoreLabel(s.score),
+  ]);
+  const csv = '﻿' + [headers, ...rows].map(r =>
+    r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')
+  ).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `班级成绩档案_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// 🌟 复制家长反馈
+const copyParentFeedback = async () => {
+  if (!selectedStudent.value) return;
+  const s = selectedStudent.value;
+  const cleanName = s.name.replace('-UI评测', '');
+  const rate = s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0;
+
+  // 取画像卡里的 AI 建议（如果可用）
+  let advice = '建议保持当前节奏，继续巩固基础。';
+  if (profileRef.value?.aiAdvice) advice = profileRef.value.aiAdvice;
+
+  // 取最薄弱知识点
+  let weakKp = '';
+  if (profileRef.value?.kpStats) {
+    const weak = profileRef.value.kpStats.filter(k => k.rate < 60).slice(0, 2).map(k => k.name);
+    if (weak.length) weakKp = `当前薄弱知识点：${weak.join('、')}。`;
+  }
+
+  const text = `家长您好：
+
+${cleanName} 同学在本次作业中累计作答 ${s.total} 题，正确 ${s.correct} 题，正确率 ${rate}%，综合得分 ${s.score} 分（${getScoreLabel(s.score)}）。
+
+${weakKp}${advice}
+
+请家长配合关注孩子近期学习状态，如有疑问可随时联系老师。
+
+—— ${globalStore.auth.subject || ''} 任课老师
+${new Date().toLocaleDateString()}`;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    copyTip.value = '✅ 已复制到剪贴板';
+  } catch (e) {
+    // 降级：弹出 prompt 让用户手动复制
+    window.prompt('请手动复制以下家长反馈：', text);
+    copyTip.value = '';
+    return;
+  }
+  setTimeout(() => { copyTip.value = ''; }, 3000);
 };
 
 onMounted(() => { if (globalStore.config.feishuToken) fetchGradesData(true); });
@@ -244,22 +338,23 @@ onActivated(() => { if (globalStore.config.feishuToken) fetchGradesData(true, tr
 </script>
 
 <style scoped>
-/* 旋转动画引擎保留 */
 @keyframes spin { 100% { transform: rotate(360deg); } }
 .is-spinning { animation: spin 1s linear infinite; }
 
 .grades-manager { display: flex; flex-direction: column; gap: 20px; min-height: 100%; padding-bottom: 20px; position: relative;}
-.dashboard-header { display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); padding: 20px 24px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #edf2f7; }
+.dashboard-header { display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); padding: 20px 24px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #edf2f7; gap: 16px; flex-wrap: wrap;}
 .title-area h3 { margin: 0 0 6px 0; font-size: 20px; color: #1a202c; font-weight: 700; }
 .title-area p { margin: 0; font-size: 13px; color: #718096; }
+.header-controls { display: flex; gap: 10px; flex-wrap: wrap; }
 .btn-fetch { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #4a5568; transition: 0.2s; }
-.btn-fetch:hover:not(:disabled) { background: #f0f7ff; color: #1890ff; border-color: #1890ff; }
+.btn-fetch:hover:not(:disabled) { background: #f0f7ff; color: var(--edu-primary, #1890ff); border-color: var(--edu-primary, #1890ff); }
+.btn-fetch:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .loading-state, .empty-state, .sub-empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 350px; color: #a0aec0; }
 .empty-icon, .sub-empty-icon { font-size: 50px; margin-bottom: 20px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.05)); }
 .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
 
-.grades-content-layout { display: grid; grid-template-columns: 45% 55%; gap: 20px; align-items: start; }
+.grades-content-layout { display: grid; grid-template-columns: 42% 58%; gap: 20px; align-items: start; }
 .panel-left, .panel-right { background: #fff; border-radius: 12px; border: 1px solid #edf2f7; box-shadow: 0 4px 20px rgba(0,0,0,0.03); overflow: hidden; }
 .panel-title { padding: 16px 20px; background: #f8fafc; border-bottom: 1px solid #edf2f7; font-weight: 700; display: flex; justify-content: space-between; font-size: 15px; color: #1e293b;}
 .student-count strong { color: #3b82f6; font-size: 16px; }
@@ -274,7 +369,6 @@ onActivated(() => { if (globalStore.config.feishuToken) fetchGradesData(true, tr
 .stu-name { display: flex; align-items: center; gap: 8px; font-weight: bold; color: #1e293b;}
 .avatar-sm { width: 28px; height: 28px; background: #e2e8f0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px;}
 
-/* 🌟 分数条样式深度优化 */
 .score-badge-container { display: flex; flex-direction: column; gap: 6px; }
 .score-text-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
 .score-text { font-size: 13px; font-weight: 800; }
@@ -285,18 +379,30 @@ onActivated(() => { if (globalStore.config.feishuToken) fetchGradesData(true, tr
 .btn-view-detail { padding: 6px 12px; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; color: #475569;}
 .btn-view-detail:hover { background: #f8fafc; border-color: #94a3b8; color: #0f172a;}
 
-.student-report-card { padding: 24px; display: flex; flex-direction: column; gap: 20px; max-height: 750px; overflow-y: auto; }
+.student-report-card { padding: 20px; display: flex; flex-direction: column; gap: 18px; max-height: 760px; overflow-y: auto; }
+
+/* 🌟 导出工具条 */
+.export-toolbar {
+  display: flex; gap: 8px; align-items: center;
+  padding: 10px 12px; border-radius: 10px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #fdf4ff 100%);
+  border: 1px dashed #c4b5fd;
+}
+.export-btn {
+  padding: 8px 14px; border-radius: 8px;
+  border: 1px solid #e2e8f0; background: #fff; color: #475569;
+  font-size: 12px; font-weight: 800; cursor: pointer; transition: 0.2s;
+}
+.export-btn:hover { border-color: #2563eb; color: #1d4ed8; background: #eff6ff; transform: translateY(-1px); }
+.copy-tip { margin-left: auto; font-size: 12px; color: #047857; font-weight: 800; }
+
+/* 网页设计旧版报告头 */
 .report-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #edf2f7; padding-bottom: 20px; }
 .report-user-info h4 { margin: 0 0 6px; font-size: 18px; color: #0f172a; font-weight: 800;}
 .report-time { font-size: 12px; color: #64748b; }
-
 .web-score-badge { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce3 100%); border: 1px solid #bbf7d0; padding: 10px 16px; border-radius: 50px; display: flex; align-items: center; gap: 8px;}
 .badge-icon { font-size: 18px; }
 .badge-text { color: #166534; font-weight: 800; font-size: 14px; }
-
-.report-score-box { border: 3px solid #edf2f7; width: 70px; height: 70px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.report-score-val { font-size: 22px; font-weight: 900; }
-.report-score-label { font-size: 10px; color: #64748b; font-weight: bold;}
 
 .report-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; background: #f8fafc; border-radius: 10px; padding: 16px; border: 1px solid #f1f5f9;}
 .stat-card { display: flex; flex-direction: column; align-items: center; gap: 6px; border-right: 1px solid #e2e8f0;}
@@ -307,4 +413,21 @@ onActivated(() => { if (globalStore.config.feishuToken) fetchGradesData(true, tr
 .text-green { color: #10b981; }
 .text-red { color: #ef4444; }
 .text-orange { color: #f59e0b; }
+
+/* 🌟 打印样式：只导出右侧画像卡 */
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body * { visibility: hidden !important; }
+  #printable-report, #printable-report * { visibility: visible !important; }
+  #printable-report {
+    position: absolute !important;
+    left: 0 !important; top: 0 !important;
+    width: 100% !important; max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+    box-shadow: none !important; border: none !important;
+  }
+  .no-print, .no-print * { display: none !important; }
+  .student-report-card { max-height: none !important; overflow: visible !important; padding: 0 !important; }
+}
 </style>

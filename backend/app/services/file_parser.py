@@ -1,10 +1,12 @@
-import pandas as pd
+import asyncio
 import io
+import pandas as pd
 
 
 class FileParserService:
     @staticmethod
     def parse_tabular_data(file_bytes: bytes, filename: str) -> str:
+        """Parse CSV/XLSX synchronously (fast enough, called from async context via to_thread)."""
         try:
             if filename.lower().endswith('.csv'):
                 df = pd.read_csv(io.BytesIO(file_bytes))
@@ -14,7 +16,7 @@ class FileParserService:
                 except Exception:
                     try:
                         df = pd.read_csv(io.BytesIO(file_bytes), skiprows=3, encoding='utf-8')
-                    except:
+                    except Exception:
                         df = pd.read_csv(io.BytesIO(file_bytes), skiprows=3, encoding='gbk')
 
             data_summary = (
@@ -25,3 +27,8 @@ class FileParserService:
             return data_summary
         except Exception as e:
             return f"\n\n[文件 {filename} 解析失败: {str(e)}]"
+
+    @staticmethod
+    async def parse_tabular_data_async(file_bytes: bytes, filename: str) -> str:
+        """Run the synchronous parser in a thread to avoid blocking the event loop."""
+        return await asyncio.to_thread(FileParserService.parse_tabular_data, file_bytes, filename)

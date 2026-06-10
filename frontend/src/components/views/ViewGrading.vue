@@ -118,6 +118,7 @@
 import { ref, onMounted, onActivated, watch, computed } from 'vue';
 import axios from 'axios';
 import { globalStore } from '../../store';
+import syncCenter from '../../services/syncCenter';
 import { parseAIContent } from '../../utils/aiDataParser';
 import ChartBase from '../renderers/ChartBase.vue';
 import GradingReportNormal from '../GradingReportNormal.vue';
@@ -136,16 +137,11 @@ const fetchWorkspace = async (isAutoSync = false) => {
   loading.value = true;
   try {
     if (isAutoSync) await new Promise(resolve => setTimeout(resolve, 800));
-
-    const payload = {
-      feishu_app_id: globalStore.config.feishuAppId,
-      feishu_app_secret: globalStore.config.feishuAppSecret,
-      app_token: globalStore.config.feishuToken
-    };
-    const res = await axios.post('/api/homework/get_workspace_data', payload);
-    if (res.data.status === 'success') {
-      pendingList.value = res.data.pending_list || [];
-      gradedList.value = res.data.graded_list || [];
+    // 🌟 统一走同步中心：缓存/inflight 去重/lastSyncAt 写入由 syncCenter 负责
+    const data = await syncCenter.loadWorkspaceData(globalStore.config.feishuToken, true);
+    if (data) {
+      pendingList.value = data.pending_list || [];
+      gradedList.value = data.graded_list || [];
     }
   } catch (e) {
     console.error("刷新工作区失败", e);
@@ -178,6 +174,7 @@ const executeGrade = async (item) => {
       feishu_app_secret: globalStore.config.feishuAppSecret,
       app_token: globalStore.config.feishuToken
     });
+    syncCenter.clearTableCache(globalStore.config.feishuToken);
     return true;
   } catch (e) {
     console.error("批改失败", e);
